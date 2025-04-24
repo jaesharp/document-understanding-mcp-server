@@ -1,0 +1,253 @@
+"""Functions related to extracting image information from PDFs."""
+
+import fitz
+import base64
+from typing import List, Optional, TYPE_CHECKING
+
+from ..exceptions import PDFExtractionError, PDFPasswordError
+
+# Import stub types
+
+# Use TYPE_CHECKING to avoid circular import
+if TYPE_CHECKING:
+    from .extractor import PDFExtractor  # Relative import for type hint
+
+
+def _extract_images_impl(
+    extractor: "PDFExtractor",  # Use type hint
+    pdf_path: str,
+    pages_str: Optional[str],
+    include_data: bool = False,
+    min_width: Optional[int] = None,
+    min_height: Optional[int] = None,
+    filter_bbox: Optional[List[float]] = None,  # [x0, y0, x1, y1]
+    password: Optional[str] = None,  # Added password argument
+) -> List[dict]:
+    """
+    Core implementation for extracting image information.
+    """
+    log = extractor.log  # Use extractor's logger
+    log.debug(
+        f"Entering _extract_images_impl for {pdf_path}, pages: {pages_str or 'all'}"
+    )
+
+    if not extractor.check_file_exists(pdf_path):
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    # Validate filter_bbox if provided
+    filter_region_rect = None
+    if filter_bbox:
+        if len(filter_bbox) != 4:
+            raise ValueError(
+                "filter_bbox must be a list of 4 coordinates [x0, y0, x1, y1]."
+            )
+        if filter_bbox[0] >= filter_bbox[2] or filter_bbox[1] >= filter_bbox[3]:
+            raise ValueError(
+                "filter_bbox coordinates must be in the format [x0, y0, x1, y1] with x0 < x1 and y0 < y1."
+            )
+        filter_region_rect = fitz.Rect(filter_bbox)
+
+    image_results = []
+    doc = None  # Ensure doc is defined for finally block
+    try:
+        # Use the new helper method to open the document
+        doc = extractor._open_pdf_document(pdf_path, password=password)
+
+        total_pages = doc.page_count
+        if total_pages == 0:
+            log.info(f"PDF has 0 pages: {pdf_path}")
+            return []
+
+        # Parse pages *after* opening doc, but catch ValueError specifically
+        try:
+            selected_indices = extractor.parse_pages(pages_str, total_pages)
+        except ValueError as page_parse_error:
+            log.error(
+                f"Invalid page specification for PDF '{pdf_path}'",
+                error=str(page_parse_error),
+            )
+            # Wrap the ValueError in PDFExtractionError
+            raise PDFExtractionError(
+                f"Failed to process image extraction for PDF '{pdf_path}': {page_parse_error}"
+            ) from page_parse_error
+
+        if not selected_indices:
+            log.warning("No valid pages selected for image extraction.")
+            return []
+
+        log.debug(f"Processing pages (0-based indices): {selected_indices}")
+
+        for page_index in selected_indices:
+            page_num_1_based = page_index + 1
+            log.debug(f"Processing page {page_num_1_based}...")
+            try:
+                page = doc.load_page(page_index)
+                # Get images from page
+                img_list = page.get_images(full=True)
+                if not img_list:
+                    log.debug(f"No images found on page {page_num_1_based}")
+                    continue
+                log.debug(
+                    f"Found {len(img_list)} raw image references on page {page_num_1_based}"
+                )
+
+                # Attempt to get bounding boxes first
+                img_bboxes = None
+                try:
+                    # Get image rects
+                    img_bboxes = page.get_image_rects(img_list, transform=False)
+                    log.debug(
+                        f"Successfully retrieved {len(img_bboxes)} bboxes for page {page_num_1_based}"
+                    )
+                except Exception as bbox_error:
+                    log.warning(
+                        "Failed to get bounding boxes for some images on page",
+                        page_number=page_num_1_based,
+                        pdf_path=pdf_path,
+                        error=str(bbox_error),
+                    )
+                    # Proceed without bboxes if retrieval failed
+
+                for i, img_info in enumerate(img_list):
+                    # --- Filtering Logic Start ---
+                    xref = img_info[0]
+                    width = img_info[2]
+                    height = img_info[3]
+                    log.debug(
+                        f"Processing image xref {xref} (w={width}, h={height}) on page {page_num_1_based}"
+                    )
+
+                    # 1. Filter by size
+                    if min_width is not None and width < min_width:
+                        log.debug(
+                            "Image filtered out by min_width",
+                            xref=xref,
+                            width=width,
+                            min_width=min_width,
+                        )
+                        continue
+                    if min_height is not None and height < min_height:
+                        log.debug(
+                            "Image filtered out by min_height",
+                            xref=xref,
+                            height=height,
+                            min_height=min_height,
+                        )
+                        continue
+
+                    # 2. Get BBox for region filtering (if needed)
+                    bbox_rect = None
+                    if img_bboxes and i < len(img_bboxes):
+                        bbox_candidate = img_bboxes[i]
+                        if isinstance(bbox_candidate, fitz.Rect):
+                            bbox_rect = bbox_candidate
+                            log.debug(f"Found valid bbox for xref {xref}: {bbox_rect}")
+                        else:
+                            # Handle cases where an item in img_bboxes might not be a Rect
+                            log.warning(
+                                "Invalid bbox type encountered in list",
+                                page_number=page_num_1_based,
+                                xref=xref,
+                                bbox_index=i,
+                                bbox_type=type(bbox_candidate),
+                            )
+                            # Don't skip image, just proceed without bbox
+                    else:
+                        log.debug(f"No bbox found for image xref {xref} at index {i}")
+
+                    # 3. Apply region filter (requires a valid bbox_rect)
+                    if filter_region_rect is not None:
+                        if bbox_rect is None:
+                            log.debug(
+                                "Image filtered out by region filter (missing bbox)",
+                                xref=xref,
+                            )
+                            continue  # Cannot apply region filter without bbox
+                        if not filter_region_rect.contains(bbox_rect):
+                            log.debug(
+                                "Image filtered out by region filter (not contained)",
+                                xref=xref,
+                                bbox=bbox_rect,
+                                filter_region=filter_region_rect,
+                            )
+                            continue
+                    # --- Filtering Logic End ---
+
+                    log.debug(f"Image xref {xref} passed filters.")
+                    # If image passes filters, proceed to build the result dict
+                    img_desc = {
+                        "page_number": page_num_1_based,
+                        "xref": xref,
+                        "width": width,
+                        "height": height,
+                    }
+                    if bbox_rect:
+                        img_desc["bbox"] = {
+                            "x0": bbox_rect.x0,
+                            "y0": bbox_rect.y0,
+                            "x1": bbox_rect.x1,
+                            "y1": bbox_rect.y1,
+                        }
+                    # else: bbox key is omitted if no valid bbox_rect
+
+                    if include_data:
+                        log.debug(f"Attempting to extract data for image xref {xref}")
+                        try:
+                            img_data = doc.extract_image(xref)
+                            if img_data and img_data["image"]:
+                                img_desc["data"] = base64.b64encode(
+                                    img_data["image"]
+                                ).decode("utf-8")
+                                img_desc["format"] = img_data["ext"]
+                                log.debug(
+                                    f"Successfully extracted data for image xref {xref}, format: {img_data['ext']}"
+                                )
+                            else:
+                                log.warning(
+                                    f"Extracted empty image data for xref {xref}",
+                                    page_number=page_num_1_based,
+                                )
+                                img_desc["data"] = ""  # Indicate empty data explicitly
+                                img_desc["format"] = (
+                                    img_data.get("ext", "unknown")
+                                    if img_data
+                                    else "unknown"
+                                )
+                        except Exception as data_err:
+                            log.warning(
+                                "Failed to extract image data",
+                                page_number=page_num_1_based,
+                                xref=xref,
+                                pdf_path=pdf_path,
+                                error=str(data_err),
+                            )
+                            # Don't add data/format keys if extraction failed
+
+                    image_results.append(img_desc)
+
+            except Exception as page_error:
+                log.warning(
+                    f"Failed to process images for page index {page_index} ('{pdf_path}'): {page_error}",
+                    exc_info=True,
+                )
+                # Don't add a partial page result, just log and continue
+                continue
+
+    except (PDFExtractionError, PDFPasswordError, ValueError) as e:
+        # Re-raise specific known exceptions (including ValueError from parse_pages)
+        raise e
+    except Exception as e:
+        log.error(f"Failed to process images for PDF '{pdf_path}': {e}", exc_info=True)
+        # Wrap other exceptions
+        raise PDFExtractionError(
+            f"Failed to process images for PDF '{pdf_path}': {e}"
+        ) from e
+    finally:
+        if doc:
+            doc.close()
+            log.debug(f"Closed PDF document: {pdf_path}")
+
+    log.info(
+        f"Successfully processed image extraction for '{pdf_path}'. Found {len(image_results)} filtered images."
+    )
+    return image_results

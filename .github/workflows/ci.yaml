@@ -1,0 +1,46 @@
+name: CI Checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Run Checks
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        # cache: 'uv' # Removed - Not supported by local 'act' simulation
+
+    - name: Install uv
+      run: pip install uv # Assuming uv needs to be installed first
+
+    - name: Install dependencies
+      run: make setup-dev # Installs project + dev/test dependencies using uv
+
+    - name: Install System Dependencies (Java, Tesseract)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y openjdk-17-jre-headless tesseract-ocr
+
+    - name: Run Type Checking (MyPy)
+      run: make typecheck
+
+    - name: Run Tests (Pytest)
+      run: make test
+
+    - name: Run Linting (Flake8 - Advisory)
+      run: make lint
+      continue-on-error: true # Don't fail workflow if linting fails 
+      
+    - name: Run Security Checks (Bandit)
+      run: make security-check 

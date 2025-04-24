@@ -1,0 +1,150 @@
+[project]
+name = "document-understanding"
+version = "0.1.0"
+description = "MCP server for document understanding tasks (text extraction, metadata, layout, tables, images)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+ "mcp[cli]>=1.6.0",
+ # "pypdf2>=3.0.1", # No longer needed, using PyMuPDF exclusively
+ "pytesseract>=0.3.10",
+ "Pillow>=10.0.0",
+ "pydantic>=2.10.1,<3.0.0",
+ "pydantic-core>=2.0",
+ "pymupdf>=1.24.0",
+ "pydantic-settings>=2.0.0",
+ "structlog>=23.0.0",
+ "tabula-py>=2.7.0",
+ "pandas>=2.0.0",
+ "langdetect>=1.0.9",
+ "anyio>=4.0",
+ "sniffio>=1.0",
+ "typing-extensions>=4.0",
+ "typing-inspection>=0.4",
+ "annotated-types>=0.5",
+ "httpx>=0.25",
+ "idna>=2.8",
+ "pytest",
+ "pytest-asyncio",
+]
+
+[build-system]
+requires = [ "hatchling",]
+build-backend = "hatchling.build"
+
+# Allow direct references like Git URLs in dependencies
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project.scripts]
+document-understanding-mcp-server = "document_understanding.standalone_server:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+    "reportlab>=4.0.0",
+    "pytest-cov>=4.0.0",
+    "hypothesis>=6.0.0",
+    "trio>=0.24.0",
+    "pytest-timeout>=2.1.0",
+    "flake8>=7.0.0",
+    "black>=24.0.0",
+    "mypy>=1.8.0",
+    "bandit>=1.7.0",
+    "autoflake>=2.2.0"
+    # "mutmut>=2.4.0"  # Will be added back when mutation testing is implemented
+]
+
+# Add pytest-lsp under a 'test' extra
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-mock",
+    "pytest-cov",
+    "pytest-lsp>=0.4.0",
+    "pytest-timeout>=2.1.0",
+    "reportlab>=4.0.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  ".",
+  "src"
+]
+# Report all except passed, quiet. -W error removed due to segfault.
+addopts = "-ra -q"
+
+# Configure pytest-asyncio
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+filterwarnings = [
+    # Ignore specific DeprecationWarnings from pymupdf/swig
+    "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
+    "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",
+    "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
+    # Ignore specific spurious config warning for timeout (match start)
+    "ignore:Unknown config option.*timeout:pytest.PytestConfigWarning"
+]
+# Force asyncio backend for tests (Removed - use markers instead)
+# anyio_backend = "asyncio"
+# Default timeout for all tests (seconds)
+timeout = 10 # Restore sensible timeout
+# Define custom markers
+markers = [
+    "slow: marks tests as slow (expected > 5s)",
+    "laggy: marks tests as laggy (expected 1s-5s)"
+]
+
+# Mutation testing configuration will be added in the future
+# [tool.mutmut]
+# paths_to_mutate = "src/"
+# backup = false
+# runner = "pytest -x"
+# tests_dir = "tests/"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/document_understanding"]
+
+[tool.uv.sources]
+mcp-bridge = { path = ".references/mcp-bridge", editable = true }
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+
+[dependency-groups]
+# ...
+
+[tool.mypy]
+namespace_packages = true
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+strict_optional = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["tabula.*", "pandas.*", "PIL.*", "pytesseract.*", "langdetect.*"]
+ignore_missing_imports = true
+
+[tool.autoflake]
+in-place = true
+remove-all-unused-imports = true
+remove-unused-variables = true
+recursive = true
+expand-star-imports = true
+exclude = [".git", ".venv", "__pycache__", "*.egg-info", "dist", "build"]

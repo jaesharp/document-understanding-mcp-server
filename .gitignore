@@ -1,0 +1,73 @@
+.phos.yml
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.coverage
+.coverage.*
+coverage_report/
+htmlcov/
+.pytest_cache/
+
+# Virtual environments
+.venv
+.tmp
+.pytest_cache
+
+# Log files
+.tmp/logs/
+!.tmp/logs/.gitkeep
+!.tmp/.gitkeep
+*.log
+
+# Generated test files
+pdf_files
+tests/data/*.pdf
+
+# Local checkouts of dependencies for analysis
+.references/
+!.references/.gitkeep
+
+# Temporary directories
+.backup_compare/
+
+# OS specific files
+.DS_Store
+
+# IDE/Editor directories
+.vscode/
+.idea/
+
+# LSP/Language Server files
+# lsp_workspace* # Incorrect assumption
+
+# Pytest cache/temp files (in root)
+.pytest_*
+
+# Build and packaging files
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.egg
+*.whl
+.eggs/
+
+# Documentation build files
+docs/_build/
+docs/api/
+
+# Mypy cache
+.mypy_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.*

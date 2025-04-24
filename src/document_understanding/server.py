@@ -6,7 +6,19 @@ from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
 import functools
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Callable, Union, TypeVar, Protocol, overload, Literal, cast
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Any,
+    Callable,
+    Union,
+    TypeVar,
+    Protocol,
+    overload,
+    Literal,
+    cast,
+)
 from datetime import datetime
 
 from .extractor import PDFExtractor
@@ -79,21 +91,33 @@ ToolHandlerResult = Union[
     WorkingDirectoryResponse,
 ]
 
+
 # Define handler function types
 class PDFRequiredHandlerProtocol(Protocol):
     """Protocol for tool handlers that require a PDF path."""
+
     def __call__(
-        self, arguments: Dict[str, Any], validated_pdf_path: str, pages_str: Optional[str]
+        self,
+        arguments: Dict[str, Any],
+        validated_pdf_path: str,
+        pages_str: Optional[str],
     ) -> ToolHandlerResult: ...
+
 
 class PDFOptionalHandlerProtocol(Protocol):
     """Protocol for tool handlers that do not require a PDF path."""
+
     def __call__(
-        self, arguments: Dict[str, Any], validated_pdf_path: Optional[str], pages_str: Optional[str]
+        self,
+        arguments: Dict[str, Any],
+        validated_pdf_path: Optional[str],
+        pages_str: Optional[str],
     ) -> ToolHandlerResult: ...
+
 
 # Either type of handler can be registered
 ToolHandlerFunction = Union[PDFRequiredHandlerProtocol, PDFOptionalHandlerProtocol]
+
 
 # Definition of all tool descriptions and schemas
 @dataclass
@@ -264,6 +288,7 @@ def register_tool(
     requires_pdf_path: Literal[True] = True,
 ) -> Callable[[PDFRequiredHandlerProtocol], PDFRequiredHandlerProtocol]: ...
 
+
 @overload
 def register_tool(
     name: str,
@@ -275,6 +300,7 @@ def register_tool(
     exclude_when: Optional[Callable[[Dict[str, bool], bool], bool]] = None,
     requires_pdf_path: Literal[False] = False,
 ) -> Callable[[PDFOptionalHandlerProtocol], PDFOptionalHandlerProtocol]: ...
+
 
 def register_tool(
     name: str,
@@ -304,7 +330,7 @@ def register_tool(
         func: Union[PDFRequiredHandlerProtocol, PDFOptionalHandlerProtocol],
     ) -> Union[PDFRequiredHandlerProtocol, PDFOptionalHandlerProtocol]:
         """Register a tool handler with appropriate type checking."""
-        
+
         @functools.wraps(func)
         def wrapper(
             arguments: Dict[str, Any],
@@ -450,7 +476,9 @@ async def handle_call_tool(
         requires_pdf = False
         if tool_def:
             # Look through registered tools to find if this one requires a PDF path
-            for param_name, param_info in tool_def.input_schema.get("properties", {}).items():
+            for param_name, param_info in tool_def.input_schema.get(
+                "properties", {}
+            ).items():
                 if param_name == "pdf_path" and param_info.get("required", False):
                     requires_pdf = True
                     break

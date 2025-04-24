@@ -192,4 +192,4 @@ async def test_handle_call_tool_extractor_generic_exception(mocker):
     assert "unexpected server error" in error_data["message"].lower()
 
     # Verify our mock was called
-    mock_extractor.extract_content.assert_called_once() 
+    mock_extractor.extract_content.assert_called_once()

@@ -79,4 +79,4 @@ async def test_handle_call_tool_path_validation_fail_before_call(mocker):
     assert "outside the allowed base directory" in error_data["message"]
 
     # The extractor method should never be called
-    mock_extractor.extract_content.assert_not_called() 
+    mock_extractor.extract_content.assert_not_called()

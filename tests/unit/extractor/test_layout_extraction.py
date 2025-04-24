@@ -302,15 +302,13 @@ def test_extract_layout_catch_all_error(mocker, test_pdfs_setup):
     mocker.patch.object(extractor, "check_file_exists", return_value=True)
     # Mock parse_pages to raise an exception
     mocker.patch.object(
-        extractor, 
-        "parse_pages", 
-        side_effect=Exception("Some unexpected error in page parsing")
+        extractor,
+        "parse_pages",
+        side_effect=Exception("Some unexpected error in page parsing"),
     )
     mock_doc = MagicMock(spec=fitz.Document)
     mock_doc.page_count = 1
     mocker.patch.object(extractor, "_open_pdf_document", return_value=mock_doc)
 
-    with pytest.raises(
-        PDFExtractionError, match="Failed to process layout for PDF .*"
-    ):
+    with pytest.raises(PDFExtractionError, match="Failed to process layout for PDF .*"):
         extractor.extract_layout("dummy.pdf", "1")

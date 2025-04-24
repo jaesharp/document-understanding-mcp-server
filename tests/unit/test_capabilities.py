@@ -65,4 +65,4 @@ async def test_handle_call_tool_search_capability_missing_trio(
     assert "search_functionality" in error_data["message"]
     assert "search_functionality" in str(
         error_data["error_details"]["missing_capabilities"]
-    ) 
+    )

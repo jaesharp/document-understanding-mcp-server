@@ -72,3 +72,4 @@ docs/api/
 # Environment variables
 .env
 .env.*
+*.pdf

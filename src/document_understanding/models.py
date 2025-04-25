@@ -221,6 +221,10 @@ class ImageDescriptor(BaseModel):
     format: Optional[str] = Field(
         None, description="Image format (e.g., png, jpeg) if data is included."
     )
+    file_path: Optional[str] = Field(
+        None,
+        description="Path to saved image file (if output_directory was specified and ENABLE_SAVE_IMAGES_TO_FILES=true).",
+    )
 
 
 class ImageExtractionResponseData(BaseModel):

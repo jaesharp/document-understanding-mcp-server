@@ -393,8 +393,26 @@ class PDFExtractor(Extractor):  # Revert class name and inheritance
         min_height: Optional[int] = None,
         filter_bbox: Optional[List[float]] = None,
         password: Optional[str] = None,
+        output_directory: Optional[str] = None,
+        save_without_returning_data: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Extracts image information by calling the implementation function."""
+        """Extracts image information by calling the implementation function.
+
+        Args:
+            pdf_path: Path to the PDF file.
+            pages_str: Page specification string (e.g., "1,3-5").
+            include_data: Whether to include base64-encoded image data.
+            min_width: Minimum image width to include.
+            min_height: Minimum image height to include.
+            filter_bbox: Bounding box to filter images by [x0, y0, x1, y1].
+            password: Password for encrypted PDFs.
+            output_directory: Directory to save extracted images to. Requires ENABLE_SAVE_IMAGES_TO_FILES=true.
+                             Path must be within SAFE_OUTPUT_DIRECTORIES unless ALLOW_ANY_PATH=true.
+            save_without_returning_data: If true, save images to files without returning base64 data in response.
+
+        Returns:
+            List of dictionaries containing image information.
+        """
         self.log.info(f"Extracting images for: {pdf_path}, pages: {pages_str or 'all'}")
         # Delegate to implementation function, passing all arguments
         return _extract_images_impl(
@@ -406,6 +424,8 @@ class PDFExtractor(Extractor):  # Revert class name and inheritance
             min_height=min_height,
             filter_bbox=filter_bbox,
             password=password,
+            output_directory=output_directory,
+            save_without_returning_data=save_without_returning_data,
         )
 
     def extract_tables(

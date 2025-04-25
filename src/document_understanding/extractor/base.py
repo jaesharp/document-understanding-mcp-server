@@ -61,8 +61,11 @@ class Extractor(abc.ABC):
         min_width: Optional[int] = None,
         min_height: Optional[int] = None,
         filter_bbox: Optional[List[float]] = None,
+        password: Optional[str] = None,
+        output_directory: Optional[str] = None,
+        save_without_returning_data: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Extracts image information."""
+        """Extracts image information and optionally saves images to files."""
 
     @abc.abstractmethod
     def extract_tables(

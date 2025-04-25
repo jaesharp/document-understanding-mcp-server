@@ -27,9 +27,42 @@ from .path_validator import PathValidator
 from .error_handler import handle_tool_errors, serialize_response_data
 from .schemas import get_schema_dict
 from . import handlers as tool_handlers
+from .guidance import (
+    # Document Analysis Framework
+    INITIAL_DOCUMENT_ASSESSMENT,
+    STRUCTURAL_MAPPING,
+    SYNTHETIC_TOC_GENERATION,
+    TERMINOLOGY_EXTRACTION,
+    CONTENT_TYPE_EXTRACTION,
+    CONTEXTUAL_ANALYSIS,
+    PROGRESSIVE_REFINEMENT,
+    # Document Structure Analysis
+    DOCUMENT_STRUCTURE_ANALYSIS,
+    CONTENT_LOCATION,
+    TARGETED_CONTENT_EXTRACTION,
+    SPECIAL_CONTENT_HANDLING,
+    # Performance Optimization
+    CHUNKING_STRATEGIES,
+    EFFICIENT_RETRIEVAL,
+    CONTEXT_MANAGEMENT,
+    RESOURCE_CONSERVATION,
+    # Image Analysis
+    IMAGE_IDENTIFICATION,
+    IMAGE_CONTEXTUAL_EXTRACTION,
+    EFFICIENT_IMAGE_HANDLING,
+    IMAGE_CONTENT_ANALYSIS,
+    # Advanced Guidance
+    ALTERNATIVE_APPROACHES,
+    SAMPLING_APPROACH_ISSUES,
+    APPROACH_SELECTION_CRITERIA,
+    IMPLEMENTATION_STRATEGIES,
+    ADVANCED_DOCUMENT_ANALYSIS_GUIDANCE,
+    # Combined Guidance
+    COMBINED_GUIDANCE,
+)
 
 # Import response models
-from .models import (
+from .models import (  # noqa: F401 - Used in type annotations & handlers
     MetadataResponse,
     TextContentResponse,
     SearchResponse,
@@ -542,6 +575,17 @@ def register_handlers():
             "Extracts text content from specified pages of a local PDF file. "
             "Uses direct text extraction with OCR fallback."
         ),
+        guidance=(
+            "Use this as your primary tool for extracting readable text from PDFs. "
+            "Returns plain text with page numbers. For scanned documents, specify 'ocr_language' "
+            "parameter (e.g., 'eng' for English, 'fra+eng' for French and English). "
+            "For page ranges, use formats like '1-3,5,7' or '-1' for the last page. "
+            "IMPORTANT: For large documents, use hierarchical retrieval - first extract metadata and outline, "
+            "then extract specific pages in small batches (5-10 pages at a time) to avoid overwhelming your context window. "
+            f"CHUNKING STRATEGY: {CHUNKING_STRATEGIES} "
+            f"CONTENT EXTRACTION: {TARGETED_CONTENT_EXTRACTION.split(chr(10))[0]} "
+            f"CONTEXT MANAGEMENT: {CONTEXT_MANAGEMENT}"
+        ),
         conditional_description=lambda caps: (
             "NOTE: OCR capability (Tesseract) is disabled."
             if not caps.get("tesseract_ocr", False)
@@ -554,7 +598,30 @@ def register_handlers():
     register_tool(
         "extract_pdf_layout",
         "Extracts detailed layout info: text blocks, drawings, image placements with coordinates.",
-        "Use for spatial analysis. Can be large output.",
+        guidance=(
+            "Use for spatial analysis when you need to understand the document structure. "
+            "Returns text with position data (bounding boxes) to analyze layout. "
+            "CAUTION: Produces very large output for complex documents. "
+            "Useful for understanding tables, columns, and document organization. "
+            "Specify 'include_images=true' or 'include_drawings=true' for complete layout analysis. "
+            "RECOMMENDED WHEN NO OUTLINE EXISTS: Use with detail_level='blocks' to get an overview of the document's structure "
+            "without overwhelming your context window. This helps identify headings, paragraphs, and sections. "
+            "For efficient retrieval: 1) First extract metadata/outline, 2) If no outline exists, use layout with 'blocks' detail level "
+            "on a few pages at a time, 3) Process only specific pages of interest, 4) Request minimal detail needed "
+            "(avoid requesting both images and drawings unless necessary). "
+            "IMAGE CONTEXT: When analyzing documents with images, use layout extraction to identify text surrounding images. "
+            "This context is crucial for understanding figures, charts, and diagrams. When using image understanding tools, "
+            "always provide this surrounding context (captions, references, explanatory text) to improve interpretation accuracy. "
+            "DOCUMENT-VISION INTEGRATION: Use layout extraction with include_images=true to create a comprehensive document map "
+            "that includes both textual and visual elements. This map serves as the foundation for integrated analysis: "
+            "a) Identify text blocks near images to provide context for vision models "
+            "b) Determine the role of each image in the document (figure, chart, diagram, table) "
+            "c) Extract bounding box coordinates to precisely locate images and surrounding text "
+            "d) Use this structural information to guide targeted extraction of both text and images "
+            "e) Create a visual-textual map that correlates visual elements with relevant text sections "
+            f"STRUCTURAL MAPPING: {STRUCTURAL_MAPPING} "
+            f"IMAGE CONTEXT: {IMAGE_CONTEXTUAL_EXTRACTION}"
+        ),
         requires_pdf_path=True,
     )(tool_handlers.handle_extract_layout)
 
@@ -562,7 +629,23 @@ def register_handlers():
     register_tool(
         "extract_pdf_metadata",
         "Extracts metadata (author, title, dates) and checks for images/drawings.",
-        "Good first step to understand PDF.",
+        guidance=(
+            "Use this as your first step when analyzing a new PDF. "
+            "Returns document properties like author, title, creation date, page count, "
+            "and indicates if the document contains images or vector graphics. "
+            "This helps you decide which other tools to use for further analysis. "
+            "RECOMMENDED: Always start with this tool to get page count and document structure "
+            "before using more resource-intensive extraction tools. "
+            "INTEGRATED DOCUMENT-VISION ANALYSIS: When processing documents with visual elements: "
+            "a) Use metadata to determine if the document contains images (has_images flag) "
+            "b) For documents with images, plan a hybrid text-vision analysis approach "
+            "c) For text-heavy documents, prioritize text extraction with selective vision analysis "
+            "d) For visually rich documents, prioritize image extraction with contextual text "
+            "e) Use page count to plan chunking strategy for large documents "
+            "f) Document classification can be enhanced by analyzing cover pages with vision models "
+            f"HIERARCHICAL ANALYSIS: {INITIAL_DOCUMENT_ASSESSMENT} "
+            f"WORKFLOW: {DOCUMENT_STRUCTURE_ANALYSIS.split(chr(10))[0]}"
+        ),
         requires_pdf_path=True,
     )(tool_handlers.handle_extract_metadata)
 
@@ -570,7 +653,17 @@ def register_handlers():
     register_tool(
         "search_pdf_text",
         "Searches for exact text (case-sensitive) within specified pages and returns bounding boxes.",
-        "Use for finding specific terms.",
+        guidance=(
+            "Use when you need to locate specific text in a document. "
+            "Returns all occurrences with page numbers and positions. "
+            "Searches are case-sensitive and exact match only. "
+            "For finding section headers, important terms, or specific data points. "
+            "Use short, distinctive phrases for best results. "
+            "STRATEGY: Use this to identify relevant pages first, then extract only those specific pages "
+            "with extract_pdf_contents to avoid processing the entire document. "
+            f"CONTENT LOCATION: {CONTENT_LOCATION} "
+            f"EFFICIENT RETRIEVAL: {EFFICIENT_RETRIEVAL}"
+        ),
         required_capabilities=["search_functionality"],
         requires_pdf_path=True,
     )(tool_handlers.handle_search_text)
@@ -578,8 +671,32 @@ def register_handlers():
     # Extract images handler
     register_tool(
         "extract_images",
-        "(EXPERIMENTAL) Extracts info about images (raster, forms). Bbox is optional.",
-        "bbox optional. Use include_data cautiously.",
+        "(EXPERIMENTAL) Extracts info about images (raster, forms) from PDF pages.",
+        guidance=(
+            "Use to extract images embedded in PDFs. "
+            "Returns image metadata (size, position) by default. "
+            "Set 'include_data=true' to get base64-encoded image content (produces large output). "
+            "Use 'min_width' and 'min_height' to filter small images. "
+            "Set 'output_directory' to save images to disk instead of returning data. "
+            "Useful for analyzing diagrams, charts, photographs in documents. "
+            "WARNING: Setting include_data=true can generate extremely large responses that may exceed "
+            "your context window. Prefer using output_directory for saving images, then process them individually. "
+            "RECOMMENDED WORKFLOW: 1) First extract metadata to identify images, 2) Save images to files using "
+            "output_directory and save_without_returning_data=true, 3) Use image understanding tools on the saved files. "
+            "VISION INTEGRATION: When analyzing images with vision models, follow these steps: "
+            "a) Extract surrounding text context using extract_pdf_layout with the image's page and coordinates "
+            "b) Save the image to a file using output_directory "
+            "c) Pass both the image file and the surrounding context to the vision model "
+            "d) Use specific prompts based on image type (chart: 'Extract data points', diagram: 'Describe relationships') "
+            "e) Correlate the vision model's analysis with the document's textual content "
+            "SPECIALIZED ANALYSIS: For charts and graphs, include axis labels, legends, and data points in context. "
+            "For diagrams, include labels, connections, and structural elements. For tables that extract_tables "
+            "cannot process well, use vision models with the prompt 'Extract the data from this table into a structured format'. "
+            "For handwritten content, use the prompt 'Transcribe the handwritten text in this image'. "
+            f"IMAGE IDENTIFICATION: {IMAGE_IDENTIFICATION} "
+            f"EFFICIENT HANDLING: {EFFICIENT_IMAGE_HANDLING} "
+            f"CONTENT ANALYSIS: {IMAGE_CONTENT_ANALYSIS}"
+        ),
         requires_pdf_path=True,
     )(tool_handlers.handle_extract_images)
 
@@ -587,6 +704,26 @@ def register_handlers():
     register_tool(
         "extract_tables",
         "Extracts tables from specified pages into lists of lists.",
+        guidance=(
+            "Use specifically for extracting tabular data from PDFs. "
+            "Returns tables as structured data (lists of rows and columns). "
+            "Works best with well-defined tables that have clear borders or spacing. "
+            "Specify page numbers to target specific tables. "
+            "Results can be processed as CSV or used to create structured data. "
+            "EFFICIENCY TIP: First use search_pdf_text or extract_pdf_outline to locate pages with tables, "
+            "then extract only those specific pages rather than the entire document. "
+            "HYBRID TABLE EXTRACTION: For complex or poorly structured tables, use a combined approach: "
+            "a) First attempt extraction with extract_tables for structured data "
+            "b) If results are unsatisfactory, use extract_images to capture the table as an image "
+            "c) Apply vision models to the image with prompts like 'Extract the data from this table into a structured format' "
+            "   or 'Identify column headers and row labels in this table' "
+            "d) Compare and merge results from both approaches for optimal accuracy "
+            "e) For tables with complex formatting, merged cells, or unusual layouts, vision models often perform better "
+            "f) For simple, well-structured tables, extract_tables typically provides cleaner, more structured results "
+            f"CONTENT EXTRACTION: {CONTENT_TYPE_EXTRACTION} "
+            f"CONTEXTUAL ANALYSIS: {CONTEXTUAL_ANALYSIS} "
+            f"RESOURCE CONSERVATION: {RESOURCE_CONSERVATION}"
+        ),
         required_capabilities=["java_runtime"],
         conditional_description=lambda caps: (
             "NOTE: Requires Java runtime, which is currently unavailable."
@@ -600,7 +737,22 @@ def register_handlers():
     register_tool(
         "detect_language",
         "Detects language(s) of text sampled from specified pages.",
-        "Useful before OCR/translation.",
+        guidance=(
+            "Use to identify the language(s) used in a document. "
+            "Returns language codes (e.g., 'en' for English) with confidence scores. "
+            "Particularly useful before OCR to select the right language model. "
+            "Can detect multiple languages in the same document. "
+            "Use 'sample_size' parameter to control how much text is analyzed. "
+            "MULTILINGUAL DOCUMENT ANALYSIS: For documents with multiple languages: "
+            "a) Detect all languages present in the document "
+            "b) When using OCR, specify all detected languages in the ocr_language parameter "
+            "c) For image analysis with vision models, include the detected languages in your prompts "
+            "d) Example prompt: 'This image contains text in [detected_languages]. Please analyze and describe it.' "
+            "e) For handwritten text in non-English languages, specify the language in your vision model prompt "
+            "f) When extracting terminology, be aware of language-specific terms and their translations "
+            f"SPECIAL HANDLING: {SPECIAL_CONTENT_HANDLING} "
+            f"TERMINOLOGY EXTRACTION: {TERMINOLOGY_EXTRACTION}"
+        ),
         requires_pdf_path=True,
     )(tool_handlers.handle_detect_language)
 
@@ -608,7 +760,19 @@ def register_handlers():
     register_tool(
         "extract_pdf_outline",
         "Extracts the document outline (Table of Contents/Bookmarks).",
-        "Useful for navigating large PDFs.",
+        guidance=(
+            "Use to retrieve the document's internal structure and navigation. "
+            "Returns hierarchical table of contents with page numbers if available. "
+            "Excellent for understanding document organization and finding key sections. "
+            "Not all PDFs have outlines - returns empty result if none exists. "
+            "RECOMMENDED WORKFLOW: 1) Extract outline to identify document structure, "
+            "2) If outline is empty, use extract_pdf_layout with detail_level='blocks' on a few pages at a time to identify sections, "
+            "3) Use page numbers from outline or identified sections to extract only relevant content, "
+            "4) Process extracted sections in manageable chunks. "
+            f"SYNTHETIC TOC: {SYNTHETIC_TOC_GENERATION} "
+            f"WORKFLOW: {DOCUMENT_STRUCTURE_ANALYSIS.split(chr(10))[1]} "
+            f"CONTEXT MANAGEMENT: {CONTEXT_MANAGEMENT}"
+        ),
         requires_pdf_path=True,
     )(tool_handlers.handle_extract_pdf_outline)
 
@@ -616,7 +780,14 @@ def register_handlers():
     register_tool(
         "get_pdf_working_directory",
         "Returns the designated directory path for placing PDFs.",
-        "Use before needing to provide a pdf_path.",
+        guidance=(
+            "Use this tool first when you need to work with PDF files. "
+            "Returns the directory where PDF files should be located or placed. "
+            "Important for constructing valid file paths for other tools. "
+            "When referencing PDFs in other tools, use paths relative to this directory. "
+            f"INITIAL ASSESSMENT: {INITIAL_DOCUMENT_ASSESSMENT.split('.')[0]} "
+            f"PROGRESSIVE REFINEMENT: {PROGRESSIVE_REFINEMENT}"
+        ),
         exclude_when=lambda caps, allow_any_path: allow_any_path,
         requires_pdf_path=False,
     )(tool_handlers.handle_get_pdf_working_directory)

@@ -215,7 +215,69 @@ def serialize_response_data(tool_name: str, response_data: Any) -> str:
         TypeError: If the response data is not a recognized serializable type (Pydantic model).
     """
     if hasattr(response_data, "model_dump_json"):
-        return str(response_data.model_dump_json())
+        # Custom JSON encoder for PyMuPDF objects
+        def pymupdf_json_encoder(obj):
+            # Handle PyMuPDF Point objects
+            if hasattr(obj, "x") and hasattr(obj, "y"):
+                return {"x": float(obj.x), "y": float(obj.y)}
+            # Handle PyMuPDF Rect objects
+            elif (
+                hasattr(obj, "x0")
+                and hasattr(obj, "y0")
+                and hasattr(obj, "x1")
+                and hasattr(obj, "y1")
+            ):
+                return {
+                    "x0": float(obj.x0),
+                    "y0": float(obj.y0),
+                    "x1": float(obj.x1),
+                    "y1": float(obj.y1),
+                }
+            # Handle datetime objects
+            elif hasattr(obj, "isoformat"):
+                return obj.isoformat() + "Z"
+            # Handle tuples and lists with PyMuPDF objects
+            elif isinstance(obj, (list, tuple)):
+                try:
+                    # Try to convert each item in the list/tuple
+                    return [pymupdf_json_encoder(item) for item in obj]
+                except TypeError:
+                    # If that fails, let the default handler deal with it
+                    pass
+            # Handle dictionaries with PyMuPDF objects
+            elif isinstance(obj, dict):
+                try:
+                    # Try to convert each value in the dictionary
+                    return {k: pymupdf_json_encoder(v) for k, v in obj.items()}
+                except TypeError:
+                    # If that fails, let the default handler deal with it
+                    pass
+            # Default case
+            raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+        try:
+            # Try using the model's built-in JSON serialization
+            return str(response_data.model_dump_json())
+        except TypeError as e:
+            # If that fails due to non-serializable objects, try with our custom encoder
+            if "is not JSON serializable" in str(e):
+                logger.warning(
+                    f"Using custom JSON encoder for tool '{tool_name}' due to: {e}"
+                )
+                try:
+                    # Convert to dict and then use json.dumps with custom encoder
+                    import json
+
+                    return json.dumps(
+                        response_data.model_dump(), default=pymupdf_json_encoder
+                    )
+                except Exception as json_err:
+                    logger.error(
+                        f"Custom JSON serialization failed for tool '{tool_name}': {json_err}"
+                    )
+                    raise
+            else:
+                raise
     else:
         logger.error(
             f"Handler for tool '{tool_name}' returned unexpected data type for serialization: {type(response_data)}"

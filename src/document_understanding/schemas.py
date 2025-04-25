@@ -60,6 +60,12 @@ class ExtractImagesSchema(PDFPathParam, PagesParam, PasswordParam):
     min_width: NotRequired[int]  # Minimum image width to include
     min_height: NotRequired[int]  # Minimum image height to include
     filter_bbox: NotRequired[List[float]]  # Region filter [x0, y0, x1, y1]
+    output_directory: NotRequired[
+        str
+    ]  # Directory to save extracted images (requires ENABLE_SAVE_IMAGES_TO_FILES=true)
+    save_without_returning_data: NotRequired[
+        bool
+    ]  # Save images to files without returning base64 data in response
 
 
 class ExtractTablesSchema(PDFPathParam, PagesParam, PasswordParam):
@@ -129,19 +135,73 @@ def get_schema_dict(tool_name: str) -> Dict[str, Any]:
         # Add descriptions
         if field_name == "pdf_path":
             field_desc["description"] = (
-                "Path relative to working dir, or absolute if allowed."
+                "Path relative to working dir, or absolute if allowed. Use get_pdf_working_directory tool to find the base directory."
             )
         elif field_name == "pages":
             field_desc["description"] = (
-                "Optional: Page spec (1-based, ranges, neg indices). Default=all."
+                "Optional: Page spec (1-based, ranges, neg indices). Examples: '1,3,5' for specific pages, '1-5' for range, '-1' for last page. Default=all. "
+                "IMPORTANT: For large documents, request small batches of pages (5-10 at a time) to avoid overwhelming your context window."
             )
         elif field_name == "password":
-            field_desc["description"] = "Optional: Password for encrypted PDFs."
+            field_desc["description"] = (
+                "Optional: Password for encrypted PDFs. Only needed if the PDF is password-protected."
+            )
         elif field_name == "query":
-            field_desc["description"] = "The text to search for (case-sensitive)"
+            field_desc["description"] = (
+                "The text to search for (case-sensitive). Use specific, unique phrases for best results."
+            )
         elif field_name == "include_data":
             field_desc["description"] = (
-                "If true, include base64 image data (large!). Default=false."
+                "If true, include base64 image data (large!). Default=false. Only set to true when you need the actual image content. "
+                "For most cases, prefer using output_directory with save_without_returning_data=true to avoid overwhelming your context window."
+            )
+        elif field_name == "output_directory":
+            field_desc["description"] = (
+                "Directory to save extracted images to. Requires ENABLE_SAVE_IMAGES_TO_FILES=true environment variable. "
+                "Use this instead of include_data for large documents with many images. "
+                "After saving images, use image understanding tools on the saved files for analysis. "
+                "When analyzing saved images, provide relevant document context from surrounding text, captions, and references "
+                "to help the vision model accurately interpret the image content."
+            )
+        elif field_name == "save_without_returning_data":
+            field_desc["description"] = (
+                "If true, save images to files without returning base64 data in response. Default=false. "
+                "Use with output_directory for efficient image extraction. "
+                "RECOMMENDED: Set to true when extracting images for analysis with image understanding tools."
+            )
+        elif field_name == "ocr_language":
+            field_desc["description"] = (
+                "Language code(s) for OCR, e.g., 'eng' for English, 'fra+eng' for French and English. Use detect_language tool first if unsure."
+            )
+        elif field_name == "min_width":
+            field_desc["description"] = (
+                "Minimum image width in pixels to include in results. Use to filter out small icons or decorations."
+            )
+        elif field_name == "min_height":
+            field_desc["description"] = (
+                "Minimum image height in pixels to include in results. Use to filter out small icons or decorations."
+            )
+        elif field_name == "filter_bbox":
+            field_desc["description"] = (
+                "Optional region filter [x0, y0, x1, y1] to only extract images within this area of the page."
+            )
+        elif field_name == "detail_level":
+            field_desc["description"] = (
+                "Level of detail for text extraction: 'blocks', 'lines', or 'words'. More detail means larger output. "
+                "Use 'blocks' for document structure overview (headings, paragraphs), 'lines' for moderate detail, "
+                "and 'words' only when precise word positioning is needed. 'blocks' is recommended for initial document analysis."
+            )
+        elif field_name == "include_images":
+            field_desc["description"] = (
+                "If true, include image placement information in layout results. Default=false."
+            )
+        elif field_name == "include_drawings":
+            field_desc["description"] = (
+                "If true, include vector drawing information in layout results. Default=false."
+            )
+        elif field_name == "sample_size":
+            field_desc["description"] = (
+                "Maximum number of characters to sample for language detection. Larger values may be more accurate but slower."
             )
 
         properties[field_name] = field_desc

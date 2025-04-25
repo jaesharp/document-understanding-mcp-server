@@ -16,7 +16,8 @@ from pathlib import Path
 # --- Constants ---
 PYTHON_EXE = sys.executable
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-STANDALONE_SCRIPT = str(PROJECT_ROOT / "standalone_server.py")
+CLI_MODULE = "document_understanding.cli"
+STANDALONE_SCRIPT = str(PROJECT_ROOT / "src" / "document_understanding" / "cli.py")
 SRC_PATH = str(PROJECT_ROOT / "src")
 MCPTOOLS_PATH = "/usr/local/bin/mcp"
 
@@ -40,10 +41,14 @@ async def launch_server_subprocess(base_path, log_file=None, env_overrides=None)
     if log_file:
         env["DOCUMENT_UNDERSTANDING_LOG_FILE"] = str(log_file)
 
-    env["PDF_SERVER_BASE_PATH"] = str(base_path)
+    # Set base path using the new environment variable name
+    env["DOCUMENT_UNDERSTANDING_BASE_PATH"] = str(base_path)
 
-    # Launch server process
-    cmd = ["python", "-m", "standalone_server"]
+    # Disable sandbox mode for testing to maintain existing behavior
+    env["DOCUMENT_UNDERSTANDING_SANDBOX"] = "false"
+
+    # Launch server process using the Python module
+    cmd = [PYTHON_EXE, "-m", CLI_MODULE]
     process = await asyncio.create_subprocess_exec(
         *cmd,
         env=env,
@@ -51,6 +56,9 @@ async def launch_server_subprocess(base_path, log_file=None, env_overrides=None)
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
+
+    # Store base path on process for access in other methods
+    process._base_path = str(base_path)
 
     # Give the server a moment to start up
     await asyncio.sleep(2)
@@ -110,10 +118,11 @@ async def run_mcp_command(
         else:
             mcptools_args.append(f"--{key}={value}")
 
-    # Define the server command
+    # Define the server command using the CLI module
     server_command = [
         PYTHON_EXE,
-        STANDALONE_SCRIPT,
+        "-m",
+        CLI_MODULE,
         "--ignore-missing-dependencies=java_runtime,tesseract_ocr",
     ]
 
@@ -128,6 +137,7 @@ async def run_mcp_command(
             "PYTHONUNBUFFERED": "1",
             "DOCUMENT_UNDERSTANDING_ALLOW_NO_JAVA": "true",
             "DOCUMENT_UNDERSTANDING_ALLOW_NO_TESSERACT": "true",
+            "DOCUMENT_UNDERSTANDING_SANDBOX": "false",  # Disable sandbox mode for testing
         }
     )
 

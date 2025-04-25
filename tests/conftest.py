@@ -11,6 +11,7 @@ from tests.pdf_generators import (
     create_table_pdf,
     create_outline_pdf,
     create_encrypted_pdf,
+    create_bbox_issue_pdf,
 )
 
 # PDF generation functions are now imported from pdf_generators.py
@@ -59,6 +60,9 @@ def test_pdfs_setup(tmp_path_factory):
 
     paths_dict["outline"] = base_temp_dir / "outline_doc.pdf"
     create_outline_pdf(paths_dict["outline"])
+
+    paths_dict["bbox_issue"] = base_temp_dir / "bbox_issue_doc.pdf"
+    create_bbox_issue_pdf(paths_dict["bbox_issue"])
 
     # Add a path for a non-existent file
     paths_dict["non_existent"] = base_temp_dir / "does_not_exist.pdf"

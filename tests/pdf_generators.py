@@ -95,22 +95,19 @@ def create_image_pdf(
     else:
         img_to_use = image_path
 
-    # Create the PDF
-    c = canvas.Canvas(str(path), pagesize=letter)
+    # Create the PDF using PyMuPDF
+    doc = fitz.open()
+    page = doc.new_page(width=letter[0], height=letter[1])
 
-    # Draw text
-    textobject = c.beginText(inch, 10 * inch)
-    textobject.textLine(text)
-    c.drawText(textobject)
+    # Add text
+    page.insert_text((inch, inch), text, fontsize=12)
 
-    # Draw image
+    # Add image
     try:
-        img_reader = ImageReader(img_to_use)
-        img_width, img_height = img_reader.getSize()
-        aspect = img_height / float(img_width)
-        c.drawImage(
-            img_to_use, inch, 8 * inch, width=2 * inch, height=(2 * aspect * inch)
-        )
+        # Define the rectangle for the image
+        rect = fitz.Rect(inch, 2 * inch, 3 * inch, 4 * inch)
+        # Insert the image
+        page.insert_image(rect, filename=img_to_use)
     finally:
         # Clean up temporary file if we created one
         if image_path is None and img_to_use != image_path:
@@ -119,7 +116,9 @@ def create_image_pdf(
             except:
                 pass
 
-    c.save()
+    # Save the PDF
+    doc.save(str(path))
+    doc.close()
 
 
 def create_drawing_pdf(path: Path, text: str = "This PDF has text and drawings."):
@@ -319,3 +318,114 @@ def create_encrypted_pdf(
 
     doc.save(str(path), **encrypt_options)
     doc.close()
+
+
+def create_bbox_issue_pdf(path: Path):
+    """
+    Creates a PDF that triggers the bounding box conversion issue in PyMuPDF.
+
+    This PDF contains specific image formats and structures that are known to cause
+    issues with PyMuPDF's get_image_rects() function, resulting in the error:
+    "Unrecognised args for constructing Pixmap".
+
+    Args:
+        path: Path where the PDF will be saved
+    """
+    # First create a PDF with ReportLab
+    temp_path = str(path) + ".temp.pdf"
+    c = canvas.Canvas(temp_path, pagesize=letter)
+    width, height = letter
+
+    # Add a title
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(inch, height - inch, "Test PDF for Bounding Box Conversion Issue")
+
+    # Add some text blocks
+    c.setFont("Helvetica", 12)
+    c.drawString(
+        inch,
+        height - 2 * inch,
+        "This PDF contains images that trigger the bounding box conversion issue.",
+    )
+    c.drawString(
+        inch,
+        height - 2.5 * inch,
+        "When processed with PyMuPDF, it will generate warnings about image bounding boxes.",
+    )
+
+    # Create a test image with specific characteristics
+    img_width, img_height = 300, 150
+    img = Image.new("RGB", (img_width, img_height), color="red")
+
+    # Add a gradient pattern that might trigger the issue
+    for y in range(img_height):
+        for x in range(img_width):
+            r = int(255 * x / img_width)
+            g = int(255 * y / img_height)
+            b = int(255 * (x + y) / (img_width + img_height))
+            img.putpixel((x, y), (r, g, b))
+
+    # Save to a temporary file
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_img_file:
+        img.save(temp_img_file.name, format="JPEG", quality=85)
+        img_path = temp_img_file.name
+
+    # Add the image to the PDF
+    try:
+        c.drawImage(img_path, inch, height - 4 * inch, width=4 * inch, height=inch)
+
+        # Add some drawings
+        c.setStrokeColor(colors.blue)
+        c.rect(inch, height - 5 * inch, 3 * inch, 0.5 * inch)
+
+        c.setStrokeColor(colors.red)
+        c.line(inch, height - 5.5 * inch, 4 * inch, height - 6 * inch)
+
+        # Save the PDF
+        c.save()
+    finally:
+        # Clean up the temporary image file
+        try:
+            os.remove(img_path)
+        except:
+            pass
+
+    # Now use PyMuPDF to add specific image structures that trigger the issue
+    doc = fitz.open(temp_path)
+
+    # Add a second page
+    page = doc.new_page()
+
+    # Add text to the second page
+    page.insert_text((inch, inch), "Second page with more test content")
+
+    # Add an image using PyMuPDF's methods
+    # This creates a different image structure than ReportLab
+    rect = fitz.Rect(inch, 2 * inch, 5 * inch, 4 * inch)
+    try:
+        # Create another test image
+        img2 = Image.new("RGB", (400, 200), color="blue")
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_img_file2:
+            img2.save(temp_img_file2.name, format="PNG")
+            img_path2 = temp_img_file2.name
+
+        # Insert the image
+        page.insert_image(rect, filename=img_path2)
+    except Exception as e:
+        print(f"Error inserting image: {e}")
+    finally:
+        # Clean up
+        try:
+            os.remove(img_path2)
+        except:
+            pass
+
+    # Save the final PDF
+    doc.save(str(path))
+    doc.close()
+
+    # Clean up the temporary PDF
+    try:
+        os.remove(temp_path)
+    except:
+        pass

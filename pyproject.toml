@@ -37,7 +37,7 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [project.scripts]
-document-understanding-mcp-server = "document_understanding.standalone_server:main"
+document-understanding-mcp-server = "document_understanding.cli:cli_main"
 
 [project.optional-dependencies]
 dev = [

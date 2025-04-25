@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Document Understanding MCP Server
+# Main entry point for the document analysis and extraction service
+# This script is a thin wrapper that delegates to the Python implementation
+
+# Determine script location and set project root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+cd "$PROJECT_ROOT"
+
+# Activate virtual environment 
+source .venv/bin/activate
+
+# Pass all arguments to the Python module
+if [ -f "src/document_understanding/cli.py" ]; then
+  # Development mode - run the module directly
+  echo "Starting document understanding MCP server (development mode)..."
+  exec python -m document_understanding.cli "$@"
+else
+  # Installed mode - run the installed entry point
+  echo "Starting document understanding MCP server..."
+  exec python -c "from document_understanding.cli import cli_main; cli_main()" "$@"
+fi 

@@ -2,10 +2,11 @@
 
 import fitz
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
-from ..models import (
+from ..models import (  # noqa: F401 - Used for type annotations
     Rect as RectModel,  # noqa: F401 - Used for type annotations
     SimpleImageInfo,  # noqa: F401 - Used for type annotations
     Rect,  # noqa: F401 - Used for type annotations
+    Point,  # noqa: F401 - Used for type annotations
 )  # Type annotations used throughout this module
 from ..exceptions import PDFExtractionError, PDFPasswordError
 
@@ -107,24 +108,76 @@ def _extract_layout_impl(
                                 if "spans" in line:
                                     for span in line["spans"]:
                                         # Basic span info - enhance later if needed
-                                        processed_spans.append(
-                                            {
-                                                "text": span.get("text", ""),
-                                                "font": span.get("font", ""),
-                                                "size": span.get("size", 0.0),
-                                                "flags": span.get("flags", 0),
-                                                "color": span.get("color", 0),
-                                                "bbox": span.get("bbox"),
-                                            }
+                                        # Convert bbox to dictionary format
+                                        span_bbox = _convert_bbox_to_dict(
+                                            span.get("bbox")
                                         )
-                                processed_lines.append(
-                                    {"bbox": line.get("bbox"), "spans": processed_spans}
-                                )
+
+                                        # Get required fields for TextSpan
+                                        # Convert origin to dictionary format
+                                        origin_point = _convert_point_to_dict(
+                                            span.get("origin")
+                                        )
+
+                                        span_dict = {
+                                            "text": span.get("text", ""),
+                                            "font": span.get("font", ""),
+                                            "size": span.get("size", 0.0),
+                                            "flags": span.get("flags", 0),
+                                            "color": span.get("color", 0),
+                                            "ascender": span.get(
+                                                "ascender", 0.8
+                                            ),  # Default values for required fields
+                                            "descender": span.get("descender", -0.2),
+                                            "origin": (
+                                                origin_point
+                                                if origin_point
+                                                else {"x": 0, "y": 0}
+                                            ),
+                                            "bbox": (
+                                                span_bbox
+                                                if span_bbox
+                                                else {
+                                                    "x0": 0,
+                                                    "y0": 0,
+                                                    "x1": 0,
+                                                    "y1": 0,
+                                                }
+                                            ),
+                                        }
+                                        processed_spans.append(span_dict)
+                                # Convert line bbox to dictionary format
+                                line_bbox = _convert_bbox_to_dict(line.get("bbox"))
+
+                                # Get required fields for TextLine
+                                # Convert dir to dictionary format
+                                dir_point = _convert_point_to_dict(line.get("dir"))
+
+                                line_dict = {
+                                    "bbox": (
+                                        line_bbox
+                                        if line_bbox
+                                        else {"x0": 0, "y0": 0, "x1": 0, "y1": 0}
+                                    ),
+                                    "spans": processed_spans,
+                                    "wmode": line.get(
+                                        "wmode", 0
+                                    ),  # Default values for required fields
+                                    "dir": dir_point if dir_point else {"x": 1, "y": 0},
+                                }
+                                processed_lines.append(line_dict)
+                            # Convert block bbox to dictionary format
+                            block_bbox = _convert_bbox_to_dict(bbox)
+
                             processed_blocks.append(
                                 {
                                     "number": block_num,
                                     "type": block_type,
-                                    "bbox": bbox,
+                                    "bbox": (
+                                        block_bbox
+                                        if block_bbox
+                                        else {"x0": 0, "y0": 0, "x1": 0, "y1": 0}
+                                    ),
                                     "lines": processed_lines,
                                 }
                             )
@@ -146,8 +199,11 @@ def _extract_layout_impl(
                 if include_drawings:
                     try:
                         drawings = page.get_drawings()
-                        # TODO: Potentially simplify/model the drawing data
-                        page_layout["drawings"] = drawings
+                        # Process drawings to ensure they are serializable
+                        processed_drawings = _process_drawings_for_serialization(
+                            drawings
+                        )
+                        page_layout["drawings"] = processed_drawings
                         log.debug(
                             f"Extracted {len(drawings)} drawing paths from page {page_num_1_based}"
                         )
@@ -169,16 +225,64 @@ def _extract_layout_impl(
                             img_bboxes = None
                             try:
                                 # Get image rects
-                                img_bboxes = page.get_image_rects(
-                                    img_list, transform=False
-                                )
+                                # First try with transform=False (preserves original coordinates)
+                                # Check if we have a valid image list
+                                if not img_list or not all(
+                                    isinstance(img, tuple) for img in img_list
+                                ):
+                                    log.warning(
+                                        "Invalid image list format",
+                                        page_number=page_num_1_based,
+                                    )
+                                    img_bboxes = (
+                                        [None] * len(img_list) if img_list else []
+                                    )
+                                else:
+                                    try:
+                                        # First try with transform=False (preserves original coordinates)
+                                        img_bboxes = page.get_image_rects(
+                                            img_list, transform=False
+                                        )
+                                    except Exception:
+                                        # If that fails, try with transform=True (applies page transformation)
+                                        try:
+                                            log.debug(
+                                                "Retrying get_image_rects with transform=True",
+                                                page_number=page_num_1_based,
+                                            )
+                                            img_bboxes = page.get_image_rects(
+                                                img_list, transform=True
+                                            )
+                                        except Exception as e2:
+                                            # If both methods fail, create empty bounding boxes
+                                            log.debug(
+                                                "Creating default bounding boxes for images",
+                                                page_number=page_num_1_based,
+                                            )
+                                            # Create a list of None values with the same length as img_list
+                                            img_bboxes = [None] * len(img_list)
+                                            # Don't re-raise the exception, just log it
+                                            log.warning(
+                                                "Failed to get image bounding boxes, using None values",
+                                                page_number=page_num_1_based,
+                                                error=str(e2),
+                                                image_count=len(img_list),
+                                                note="Images without bounding boxes will be included in the output, but their positions will be unknown. This may affect layout analysis and visual representation.",
+                                            )
                             except Exception as bbox_error:
                                 log.warning(
                                     "Failed to get bounding boxes for some images on page",
                                     page_number=page_num_1_based,
                                     pdf_path=pdf_path,
                                     error=str(bbox_error),
+                                    image_count=len(img_list) if img_list else 0,
+                                    note="Images without bounding boxes will be included in the output, but their positions will be unknown. This may affect layout analysis and visual representation.",
                                 )
+                                # Ensure img_bboxes is initialized even if an exception occurs
+                                if img_bboxes is None:
+                                    img_bboxes = (
+                                        [None] * len(img_list) if img_list else []
+                                    )
 
                             page_images = []
                             for i, img_info in enumerate(img_list):
@@ -213,14 +317,13 @@ def _extract_layout_impl(
                                         "xref": xref,
                                         "width": width,
                                         "height": height,
+                                        # Always include bbox field, even if None, to satisfy the model
+                                        "bbox": (
+                                            _convert_bbox_to_dict(bbox_rect)
+                                            if bbox_rect
+                                            else None
+                                        ),
                                     }
-                                    if bbox_rect:
-                                        img_desc_dict["bbox"] = {
-                                            "x0": bbox_rect.x0,
-                                            "y0": bbox_rect.y0,
-                                            "x1": bbox_rect.x1,
-                                            "y1": bbox_rect.y1,
-                                        }
 
                                     page_images.append(img_desc_dict)
 
@@ -288,4 +391,161 @@ def _extract_layout_impl(
     return layout_results
 
 
-# Placeholder for potential future layout-specific helper functions
+def _convert_bbox_to_dict(bbox) -> Optional[Dict[str, float]]:
+    """
+    Convert a bbox from various formats to a dictionary format suitable for Pydantic models.
+
+    This function is critical for handling bounding boxes in the layout extraction process.
+    PyMuPDF returns bounding boxes in various formats (tuples, fitz.Rect objects), but the
+    Pydantic models expect dictionaries with specific keys. This function handles the conversion
+    and provides robust error handling.
+
+    When a bounding box cannot be converted (e.g., it's None or in an unsupported format),
+    the function returns None. The calling code should handle this case appropriately,
+    typically by providing a default bounding box or skipping the element.
+
+    Args:
+        bbox: A bounding box in tuple format (x0, y0, x1, y1), list format [x0, y0, x1, y1],
+              fitz.Rect object, or dictionary with x0, y0, x1, y1 keys
+
+    Returns:
+        A dictionary with x0, y0, x1, y1 keys, or None if the input is invalid
+    """
+    if bbox is None:
+        return None
+
+    # Handle fitz.Rect objects
+    if isinstance(bbox, fitz.Rect):
+        return {"x0": bbox.x0, "y0": bbox.y0, "x1": bbox.x1, "y1": bbox.y1}
+
+    # Handle tuples and lists
+    if isinstance(bbox, (tuple, list)) and len(bbox) >= 4:
+        return {
+            "x0": float(bbox[0]),
+            "y0": float(bbox[1]),
+            "x1": float(bbox[2]),
+            "y1": float(bbox[3]),
+        }
+
+    # Handle dictionaries
+    if isinstance(bbox, dict) and all(k in bbox for k in ["x0", "y0", "x1", "y1"]):
+        return {
+            "x0": float(bbox["x0"]),
+            "y0": float(bbox["y0"]),
+            "x1": float(bbox["x1"]),
+            "y1": float(bbox["y1"]),
+        }
+
+    # If we get here, the bbox is in an unsupported format
+    return None
+
+
+# Other layout-specific helper functions
+
+
+def _convert_point_to_dict(point) -> Optional[Dict[str, float]]:
+    """
+    Convert a point from various formats to a dictionary format suitable for Pydantic models.
+
+    This function handles PyMuPDF Point objects, tuples, lists, and dictionaries.
+
+    Args:
+        point: A point in PyMuPDF Point format, tuple format (x, y), list format [x, y],
+              or dictionary with x, y keys
+
+    Returns:
+        A dictionary with x, y keys, or None if the input is invalid
+    """
+    if point is None:
+        return None
+
+    # Handle PyMuPDF Point objects
+    if hasattr(point, "x") and hasattr(point, "y"):
+        return {"x": float(point.x), "y": float(point.y)}
+
+    # Handle tuples and lists
+    if isinstance(point, (tuple, list)) and len(point) >= 2:
+        return {"x": float(point[0]), "y": float(point[1])}
+
+    # Handle dictionaries
+    if isinstance(point, dict) and all(k in point for k in ["x", "y"]):
+        return {"x": float(point["x"]), "y": float(point["y"])}
+
+    # If we get here, the point is in an unsupported format
+    return None
+
+
+def _process_drawings_for_serialization(drawings: List[Dict]) -> List[Dict]:
+    """
+    Process drawings to ensure they are serializable.
+
+    This function converts any PyMuPDF-specific objects (like Point) to dictionaries.
+
+    Args:
+        drawings: List of drawing dictionaries from PyMuPDF
+
+    Returns:
+        List of serializable drawing dictionaries
+    """
+    from typing import Any, Dict
+
+    processed_drawings = []
+
+    for drawing in drawings:
+        # Create a new dict to avoid modifying the original
+        processed_drawing: Dict[str, Any] = {}
+
+        # Process each key in the drawing dict
+        for key, value in drawing.items():
+            # Handle items that might be PyMuPDF Rect objects
+            if key == "rect" and hasattr(value, "x0"):
+                processed_drawing[key] = _convert_bbox_to_dict(value)
+            # Handle items that might be PyMuPDF Point objects
+            elif (
+                key in ["start", "end", "point"]
+                and hasattr(value, "x")
+                and hasattr(value, "y")
+            ):
+                processed_drawing[key] = _convert_point_to_dict(value)
+            # Handle lists that might contain Point objects
+            elif key == "points" and isinstance(value, list):
+                # Create a list of processed points
+                processed_points = [
+                    (
+                        _convert_point_to_dict(p)
+                        if hasattr(p, "x") and hasattr(p, "y")
+                        else p
+                    )
+                    for p in value
+                ]
+                processed_drawing[key] = processed_points
+            # Handle 'items' list which might contain tuples with Rect objects
+            elif key == "items" and isinstance(value, list):
+                processed_items = []
+                for item in value:
+                    if isinstance(item, tuple):
+                        # Process tuple items
+                        processed_tuple = list(item)  # Convert to list for modification
+                        # Check if any element is a Rect
+                        for i, elem in enumerate(processed_tuple):
+                            if (
+                                hasattr(elem, "x0")
+                                and hasattr(elem, "y0")
+                                and hasattr(elem, "x1")
+                                and hasattr(elem, "y1")
+                            ):
+                                processed_tuple[i] = _convert_bbox_to_dict(elem)
+                        processed_items.append(
+                            tuple(processed_tuple)
+                        )  # Convert back to tuple
+                    else:
+                        processed_items.append(item)
+                # Assign the processed items to the key
+                processed_drawing[key] = processed_items
+            # Handle other values
+            else:
+                processed_drawing[key] = value
+
+        processed_drawings.append(processed_drawing)
+
+    return processed_drawings

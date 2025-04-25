@@ -7,9 +7,45 @@ from src.document_understanding.exceptions import (
     PDFExtractionError,
     PDFPasswordError,
 )  # Ensure imported
+from src.document_understanding.extractor.layout_extraction import _convert_bbox_to_dict
 
 # Use a single real instance for tests needing it
 extractor_real = PDFExtractor()
+
+# --- Tests for helper functions --- #
+
+
+def test_convert_bbox_to_dict():
+    """Test the _convert_bbox_to_dict helper function with various input formats."""
+    # Test with fitz.Rect
+    rect = fitz.Rect(1.0, 2.0, 3.0, 4.0)
+    result = _convert_bbox_to_dict(rect)
+    assert result == {"x0": 1.0, "y0": 2.0, "x1": 3.0, "y1": 4.0}
+
+    # Test with tuple
+    result = _convert_bbox_to_dict((5.0, 6.0, 7.0, 8.0))
+    assert result == {"x0": 5.0, "y0": 6.0, "x1": 7.0, "y1": 8.0}
+
+    # Test with list
+    result = _convert_bbox_to_dict([9.0, 10.0, 11.0, 12.0])
+    assert result == {"x0": 9.0, "y0": 10.0, "x1": 11.0, "y1": 12.0}
+
+    # Test with dictionary
+    result = _convert_bbox_to_dict({"x0": 13.0, "y0": 14.0, "x1": 15.0, "y1": 16.0})
+    assert result == {"x0": 13.0, "y0": 14.0, "x1": 15.0, "y1": 16.0}
+
+    # Test with None
+    result = _convert_bbox_to_dict(None)
+    assert result is None
+
+    # Test with invalid input
+    result = _convert_bbox_to_dict("not a bbox")
+    assert result is None
+
+    # Test with incomplete tuple
+    result = _convert_bbox_to_dict((1.0, 2.0))
+    assert result is None
+
 
 # --- Tests for extract_layout --- #
 
@@ -252,10 +288,11 @@ def test_extract_layout_image_processing_error(
     assert len(layout_results) == 1
     page_layout = layout_results[0]
 
-    # The implementation actually includes both images, just without the bbox for the second one
+    # The implementation includes both images, with a valid bbox for the first one and None for the second one
     assert len(page_layout["images"]) == 2
     assert "bbox" in page_layout["images"][0]
-    assert "bbox" not in page_layout["images"][1]
+    assert "bbox" in page_layout["images"][1]
+    assert page_layout["images"][1]["bbox"] is None
 
     # Verify the warning was logged
     mock_logger.warning.assert_any_call(

@@ -8,11 +8,7 @@ from io import BytesIO
 import base64
 from document_understanding.extractor.extractor import PDFExtractor
 
-# Skip if test PDFs are not available
-pytestmark = pytest.mark.skipif(
-    not os.path.exists("tests/data/pdfs/image.pdf"),
-    reason="Test PDF files not available",
-)
+# Skip if test PDFs are not available - REMOVED as we use dynamically generated files
 
 
 @pytest.fixture

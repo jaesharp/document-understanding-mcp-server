@@ -325,7 +325,7 @@ def handle_extract_images(
 ) -> ImageExtractionResponse:
     """
     Handle extract_images tool call.
-    Extract images from PDF pages.
+    Extract images from PDF pages and optionally save to files.
     """
     if validated_pdf_path is None:
         raise ValueError("PDF path cannot be None for extract_images operation")
@@ -334,14 +334,24 @@ def handle_extract_images(
     min_width = arguments.get("min_width")
     min_height = arguments.get("min_height")
     filter_bbox = arguments.get("filter_bbox")
+    output_directory = arguments.get("output_directory")
+    save_without_returning_data = arguments.get("save_without_returning_data", False)
+
+    # If save_without_returning_data is True, we need to extract the image data
+    # to save it to files, but we won't return it in the response
+    extract_data = bool(
+        include_data or (save_without_returning_data and output_directory)
+    )
 
     image_data = get_extractor().extract_images(
         pdf_path=validated_pdf_path,
         pages_str=pages_str,
-        include_data=include_data,
+        include_data=extract_data,
         min_width=min_width,
         min_height=min_height,
         filter_bbox=filter_bbox,
+        output_directory=output_directory,
+        save_without_returning_data=save_without_returning_data,
     )
 
     # Convert dicts/objects to Pydantic models for validation/consistency

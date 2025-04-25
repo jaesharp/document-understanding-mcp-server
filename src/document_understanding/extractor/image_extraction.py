@@ -2,7 +2,8 @@
 
 import fitz
 import base64
-from typing import List, Optional, TYPE_CHECKING
+import os
+from typing import List, Optional, TYPE_CHECKING, Dict, Any
 
 from ..exceptions import PDFExtractionError, PDFPasswordError
 
@@ -22,9 +23,12 @@ def _extract_images_impl(
     min_height: Optional[int] = None,
     filter_bbox: Optional[List[float]] = None,  # [x0, y0, x1, y1]
     password: Optional[str] = None,  # Added password argument
+    output_directory: Optional[str] = None,  # Directory to save extracted images
+    save_without_returning_data: bool = False,  # Save images without returning data
 ) -> List[dict]:
     """
     Core implementation for extracting image information.
+    Optionally saves images to files if output_directory is specified.
     """
     log = extractor.log  # Use extractor's logger
     log.debug(
@@ -33,6 +37,54 @@ def _extract_images_impl(
 
     if not extractor.check_file_exists(pdf_path):
         raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    # Check if saving to files is enabled via feature flag
+    save_images_enabled = (
+        os.environ.get("ENABLE_SAVE_IMAGES_TO_FILES", "false").lower() == "true"
+    )
+
+    # Validate output_directory if specified
+    if output_directory and not save_images_enabled:
+        log.warning(
+            "Saving images to files is disabled. Set ENABLE_SAVE_IMAGES_TO_FILES=true to enable."
+        )
+        output_directory = None  # Disable saving if feature flag is not set
+
+    # Create output directory if specified and enabled
+    if output_directory:
+        # Validate the output directory path for security
+        # Similar to how we handle allow-any-path
+        allow_any_path = os.environ.get("ALLOW_ANY_PATH", "false").lower() == "true"
+
+        if not allow_any_path:
+            # Only allow paths within the configured safe directories
+            safe_dirs = os.environ.get("SAFE_OUTPUT_DIRECTORIES", "").split(":")
+            is_safe_path = False
+
+            for safe_dir in safe_dirs:
+                if safe_dir and os.path.commonpath(
+                    [os.path.abspath(safe_dir), os.path.abspath(output_directory)]
+                ) == os.path.abspath(safe_dir):
+                    is_safe_path = True
+                    break
+
+            if not is_safe_path:
+                log.warning(
+                    f"Output directory {output_directory} is not within allowed safe directories. "
+                    f"Set ALLOW_ANY_PATH=true to override or add to SAFE_OUTPUT_DIRECTORIES."
+                )
+                output_directory = None  # Disable saving if path is not safe
+
+        if output_directory:
+            try:
+                os.makedirs(output_directory, exist_ok=True)
+                log.info(f"Images will be saved to directory: {output_directory}")
+            except Exception as dir_err:
+                log.error(
+                    f"Failed to create output directory: {output_directory}",
+                    error=str(dir_err),
+                )
+                output_directory = None  # Disable saving if directory creation fails
 
     # Validate filter_bbox if provided
     filter_region_rect = None
@@ -195,13 +247,46 @@ def _extract_images_impl(
                         try:
                             img_data = doc.extract_image(xref)
                             if img_data and img_data["image"]:
-                                img_desc["data"] = base64.b64encode(
-                                    img_data["image"]
-                                ).decode("utf-8")
-                                img_desc["format"] = img_data["ext"]
-                                log.debug(
-                                    f"Successfully extracted data for image xref {xref}, format: {img_data['ext']}"
-                                )
+                                # Only include data in the response if save_without_returning_data is False
+                                if not save_without_returning_data:
+                                    img_desc["data"] = base64.b64encode(
+                                        img_data["image"]
+                                    ).decode("utf-8")
+                                    img_desc["format"] = img_data["ext"]
+                                    log.debug(
+                                        f"Successfully extracted data for image xref {xref}, format: {img_data['ext']}"
+                                    )
+                                else:
+                                    # Still set the format even if we're not returning the data
+                                    img_desc["format"] = img_data["ext"]
+                                    log.debug(
+                                        f"Extracted data for image xref {xref} but not returning it in response, format: {img_data['ext']}"
+                                    )
+
+                                # Save image to file if output_directory is specified
+                                if output_directory:
+                                    try:
+                                        # Generate a unique filename
+                                        file_format = img_data["ext"]
+                                        file_name = f"image_p{page_num_1_based}_x{xref}.{file_format}"
+                                        file_path = os.path.join(
+                                            output_directory, file_name
+                                        )
+
+                                        # Save the image to file
+                                        with open(file_path, "wb") as f:
+                                            f.write(img_data["image"])
+
+                                        # Add file path to the result
+                                        img_desc["file_path"] = file_path
+                                        log.debug(f"Saved image to file: {file_path}")
+                                    except Exception as save_err:
+                                        log.warning(
+                                            "Failed to save image to file",
+                                            page_number=page_num_1_based,
+                                            xref=xref,
+                                            error=str(save_err),
+                                        )
                             else:
                                 log.warning(
                                     f"Extracted empty image data for xref {xref}",

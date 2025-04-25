@@ -17,6 +17,7 @@ htmlcov/
 .venv
 .tmp
 .pytest_cache
+pytest-of*/
 
 # Log files
 .tmp/logs/

@@ -54,11 +54,10 @@ This document tracks known issues, limitations, and workarounds in the `document
 *   **Limitation:** These features are not currently implemented.
 *   **Future:** Consider implementing these features if desired to enhance content extraction capabilities. Requires defining the exact behaviour and updating the implementation and tool schema.
 
-### 9. Untested Standalone Server (`standalone_server.py`)
+### 9. CLI Entry Points Need More Test Coverage
 
-*   **Issue:** The `standalone_server.py` script, responsible for the command-line interface, argument parsing (including `--base-path`, `--allow-any-path`, capability flags), and initializing server capabilities, currently has limited unit test coverage.
-*   **Impact:** Potential bugs in CLI argument handling, path validation logic, or capability detection (like checking for Java) may not be fully covered by automated tests.
-*   **Future:** Enhance unit tests for `standalone_server.py` and `standalone_config.py` to cover argument parsing, configuration loading, capability detection logic, and path validation rules.
+*   **Issue:** The command-line interface components, including `standalone_server.py`, the `document-understanding-mcp-server` executable, and the `cli.py` module, which handle argument parsing, environment configuration, and capability detection, currently have limited test coverage.
+*   **Future:** Enhance unit tests for all CLI entry points to cover argument parsing, configuration loading, capability detection logic, and path validation rules. Add tests for sandbox mode operation and security settings.
 
 ## MCP SDK Issues
 

@@ -2,13 +2,18 @@
 
 ## Current Security Measures
 
-### File System Access (`DOCUMENT_UNDERSTANDING_BASE_PATH` and `--allow-any-path`)
+### File System Access (`DOCUMENT_UNDERSTANDING_BASE_PATH`, `--allow-any-path`, and `ENABLE_SAVE_IMAGES_TO_FILES`)
 
-*   **Risk:** The server processes local PDF files specified by path. Allowing arbitrary file path access from the LLM or client introduces a significant security risk. An attacker could potentially request paths pointing to sensitive system files (e.g., `/etc/passwd`, configuration files, credentials) or cause denial-of-service by requesting large or numerous files.
-*   **Mitigation:**
+*   **Risk:** The server processes local PDF files specified by path. Allowing arbitrary file path access from the LLM or client introduces a significant security risk. An attacker could potentially request paths pointing to sensitive system files (e.g., `/etc/passwd`, configuration files, credentials) or cause denial-of-service by requesting large or numerous files. Additionally, allowing the server to write files to disk introduces the risk of disk space exhaustion and potential data exfiltration.
+*   **Mitigation for Reading Files:**
     *   By default, the server **requires** the `DOCUMENT_UNDERSTANDING_BASE_PATH` environment variable to be set during startup. This variable defines the *only* directory (and its subdirectories) from which the server will accept `pdf_path` arguments.
     *   The server performs path validation on every incoming `pdf_path` to ensure it resolves to a location *within* the configured `DOCUMENT_UNDERSTANDING_BASE_PATH`. Path traversal attempts (`../`) or absolute paths outside this base directory will be rejected with an error.
     *   The `--allow-any-path` command-line flag completely disables this restriction. **This flag should ONLY be used in highly controlled, trusted environments where the operator fully understands and accepts the risks.** It is strongly discouraged for production or multi-user scenarios.
+*   **Mitigation for Writing Files:**
+    *   By default, the server cannot write files to disk except in specific controlled scenarios.
+    *   The `extract_images` tool can save extracted images to disk only when `ENABLE_SAVE_IMAGES_TO_FILES=true`.
+    *   When enabled, image saving is restricted to directories listed in `SAFE_OUTPUT_DIRECTORIES` unless `ALLOW_ANY_PATH=true`.
+    *   These restrictions help prevent unauthorized file access and potential data exfiltration.
 *   **LLM Guidance:** The LLM should use the `get_pdf_working_directory` tool to discover the allowed base path before attempting to process files.
 
 ### External Dependencies (Java Runtime, Tesseract OCR)
@@ -117,12 +122,16 @@
 
 3. **Avoid `--allow-any-path` Flag:** Never use the `--allow-any-path` flag in production or multi-user environments.
 
-4. **Implement Rate Limiting:** Consider implementing rate limiting for API requests to prevent DoS attacks.
+4. **Carefully Control File Writing:** Only enable `ENABLE_SAVE_IMAGES_TO_FILES` when necessary and configure `SAFE_OUTPUT_DIRECTORIES` with specific, controlled directories.
 
-5. **Regular Security Audits:** Conduct regular security audits of the codebase, especially after significant changes.
+5. **Implement Rate Limiting:** Consider implementing rate limiting for API requests to prevent DoS attacks.
 
-6. **Secure External Dependencies:** Ensure Java and Tesseract are installed from trusted sources and kept updated.
+6. **Regular Security Audits:** Conduct regular security audits of the codebase, especially after significant changes.
 
-7. **Monitor Resource Usage:** Implement monitoring for CPU, memory, and disk usage to detect potential DoS attacks.
+7. **Secure External Dependencies:** Ensure Java and Tesseract are installed from trusted sources and kept updated.
 
-8. **Implement Proper Logging:** Ensure all security-related events are properly logged for auditing purposes.
+8. **Monitor Resource Usage:** Implement monitoring for CPU, memory, and disk usage to detect potential DoS attacks.
+
+9. **Implement Proper Logging:** Ensure all security-related events are properly logged for auditing purposes.
+
+10. **Disk Space Management:** When enabling image saving, monitor disk space usage and implement quotas or cleanup procedures to prevent disk space exhaustion.

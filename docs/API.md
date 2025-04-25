@@ -13,12 +13,17 @@ The server can be configured using environment variables:
 | Environment Variable | Description | Default |
 |----------------------|-------------|---------|
 | `DOCUMENT_UNDERSTANDING_BASE_PATH` | Base path for PDF files | Current working directory |
+| `DOCUMENT_UNDERSTANDING_SANDBOX` | Enable sandbox mode with isolated directories and stricter permissions | `true` |
 | `DOCUMENT_UNDERSTANDING_ALLOW_ANY_PATH` | Allow access to files outside the base path | `false` |
 | `DOCUMENT_UNDERSTANDING_ENABLE_EXPERIMENTAL` | Enable experimental features | `false` |
 | `DOCUMENT_UNDERSTANDING_LOG_LEVEL` | Log level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 | `DOCUMENT_UNDERSTANDING_LOG_FILE` | Path to log file | None (logs to stderr) |
 | `DOCUMENT_UNDERSTANDING_ALLOW_NO_JAVA` | Allow server to run without Java (disables table extraction) | `false` |
 | `DOCUMENT_UNDERSTANDING_ALLOW_NO_TESSERACT` | Allow server to run without Tesseract (disables OCR) | `false` |
+| `ENABLE_SAVE_IMAGES_TO_FILES` | Enable saving extracted images to files | `true` in sandbox mode |
+| `SAFE_OUTPUT_DIRECTORIES` | Colon-separated list of directories where images can be saved | User-specific directory in sandbox mode |
+
+When `DOCUMENT_UNDERSTANDING_SANDBOX` is enabled (default), the server creates isolated user-specific directories for file output with stricter permissions. This provides better security by default. The `--allow-any-path` flag is only enabled when sandbox mode is disabled.
 
 ## Available Tools
 
@@ -160,6 +165,8 @@ The server provides the following tools:
 - `min_height` (integer, optional): Minimum image height to include in results.
 - `filter_bbox` (array, optional): Bounding box to filter images by [x0, y0, x1, y1].
 - `password` (string, optional): Password for encrypted PDFs
+- `output_directory` (string, optional): Directory to save extracted images to. Requires `ENABLE_SAVE_IMAGES_TO_FILES=true` environment variable. Path must be within `SAFE_OUTPUT_DIRECTORIES` unless `ALLOW_ANY_PATH=true`.
+- `save_without_returning_data` (boolean, optional): If true, save images to files without returning base64 data in response. Default is `false`.
 
 **Response Format**:
 ```json
@@ -178,7 +185,8 @@ The server provides the following tools:
         "y1": 700
       },
       "data": "base64-encoded-image-data", // Only if include_data is true
-      "format": "png" // Only if include_data is true
+      "format": "png", // Only if include_data is true
+      "file_path": "/path/to/saved/image.png" // Only if output_directory is specified and saving is enabled
     }
   ]
 }

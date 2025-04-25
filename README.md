@@ -56,6 +56,8 @@ These tools can be used by AI models to analyze and understand PDF documents, en
 *   **`DOCUMENT_UNDERSTANDING_LOG_FILE` (Environment Variable):** If set, specifies a path to write structured JSON logs (e.g., `.tmp/logs/server.log`). Directory will be created. Default=Disabled.
 *   **`DOCUMENT_UNDERSTANDING_LOG_FILE_LEVEL` (Environment Variable):** Minimum level for file logging (e.g., `DEBUG`, `INFO`). Default=`INFO`.
 *   **`DOCUMENT_UNDERSTANDING_DEFAULT_LANG` (Environment Variable):** Sets the default OCR language (e.g., `eng`, `fra`). Defaults to `eng` if not set.
+*   **`ENABLE_SAVE_IMAGES_TO_FILES` (Environment Variable):** When set to `true`, enables saving extracted images to files when using the `extract_images` tool with the `output_directory` parameter. Default=`false`.
+*   **`SAFE_OUTPUT_DIRECTORIES` (Environment Variable):** Colon-separated list of directories where images can be saved when `ENABLE_SAVE_IMAGES_TO_FILES=true` but `ALLOW_ANY_PATH=false`. For example: `/tmp:/var/output:/data/images`.
 *   **Capability Override / Enable Flags (Command-line):**
     *   `--allow-no-java`: If the Java runtime (required for `extract_tables`) is not found, the server will normally exit. Use this flag to allow startup, but the `extract_tables` tool will be disabled.
     *   `--allow-no-tesseract`: If the Tesseract executable (required for OCR fallback) is not found, the server will normally exit. Use this flag to allow startup, but OCR fallback in `extract_pdf_contents` will be disabled.
@@ -127,9 +129,14 @@ See `src/document_understanding/models.py` for response schemas (e.g., `TextCont
     *   `pdf_path` (string, required): Path to the local PDF file.
     *   `pages` (string, optional): Page spec. Default=all.
     *   `include_data` (boolean, optional): If true, include base64 image data. Default=false.
+    *   `min_width` (integer, optional): Minimum image width to include in results.
+    *   `min_height` (integer, optional): Minimum image height to include in results.
+    *   `filter_bbox` (array, optional): Bounding box to filter images by [x0, y0, x1, y1].
     *   `password` (string, optional): Password for encrypted PDFs.
+    *   `output_directory` (string, optional): Directory to save extracted images to. Requires `ENABLE_SAVE_IMAGES_TO_FILES=true` environment variable.
+    *   `save_without_returning_data` (boolean, optional): If true, save images to files without returning base64 data in response. Default=false.
 *   **Returns**: `ImageExtractionResponse` JSON.
-*   **Guidance**: Returns image dimensions, page number, and internal reference (`xref`). Bounding box (`bbox`) is optional and may be missing if detection fails (e.g., for Form XObjects). Use `include_data=True` cautiously as it can return very large responses.
+*   **Guidance**: Returns image dimensions, page number, and internal reference (`xref`). Bounding box (`bbox`) is optional and may be missing if detection fails (e.g., for Form XObjects). Use `include_data=True` cautiously as it can return very large responses. When `output_directory` is specified and `ENABLE_SAVE_IMAGES_TO_FILES=true`, images will be saved to disk and the response will include file paths. Use `save_without_returning_data=True` to save images to files without including the potentially large base64 data in the response.
 
 ### 6. `extract_tables`
 *   **Description**: Extracts tables from specified PDF pages into lists of lists.
@@ -204,9 +211,42 @@ The end-to-end tests use the MCP command-line interface to interact with the ser
 
 ## Running the Server / Invocation
 
-This server runs using the standard MCP stdio communication.
+This server runs using the standard MCP stdio communication. There are multiple ways to run the server:
 
-**Using `standalone_server.py` (Recommended for MCP `command`):**
+### Method 1: Using the Provided Executable (Recommended)
+
+```bash
+# Set required base path (if not using sandbox mode)
+export DOCUMENT_UNDERSTANDING_BASE_PATH=/path/to/pdf/storage
+
+# Run with default settings (sandbox mode)
+bin/document-understanding-mcp-server
+
+# Run with sandbox mode disabled (less restricted)
+DOCUMENT_UNDERSTANDING_SANDBOX=false bin/document-understanding-mcp-server
+
+# Run with additional arguments
+bin/document-understanding-mcp-server --enable-experimental --port 8000
+```
+
+The `document-understanding-mcp-server` executable automatically sets up a secure environment with:
+- User-specific isolated directories in sandbox mode (default)
+- Appropriate permissions based on security context
+- Intelligent argument handling based on environment
+
+### Method 2: Using Installed Package Entry Point
+
+When the package is installed via pip, you can use the entry point directly:
+
+```bash
+# Run with default settings
+document-understanding-mcp-server
+
+# Run with custom arguments
+document-understanding-mcp-server --allow-any-path --enable-experimental
+```
+
+### Method 3: Using `standalone_server.py` Directly
 
 ```bash
 # Activate environment
@@ -222,16 +262,45 @@ python standalone_server.py
 python standalone_server.py --allow-no-java --allow-no-tesseract
 
 # Run allowing ANY path access (UNSAFE)
-# PDF_SERVER_BASE_PATH is ignored here
+# DOCUMENT_UNDERSTANDING_BASE_PATH is ignored here
 python standalone_server.py --allow-any-path
 
 # Enable experimental features
 python standalone_server.py --enable-experimental
 ```
 
-**Invocation Command (Example `mcp.json`):**
+### Sandbox Mode
 
-### Example 1: Basic Configuration
+The server supports a secure sandbox mode (enabled by default) that:
+
+1. Creates isolated user-specific directories for file output
+2. Sets stricter file permissions (700 - user access only)
+3. Disables the `--allow-any-path` flag for better security
+
+To disable sandbox mode (not recommended for production):
+
+```bash
+export DOCUMENT_UNDERSTANDING_SANDBOX=false
+```
+
+### Invocation Command (Example `mcp.json`)
+
+#### Example 1: Basic Configuration
+
+```json
+{
+  "mcpServers": {
+    "document-understanding": {
+      "command": "/path/to/document-understanding-mcp-server",
+      "args": [
+        "--enable-experimental"
+      ]
+    }
+  }
+}
+```
+
+#### Example 2: Using Python Module Directly
 
 ```json
 {
@@ -239,56 +308,14 @@ python standalone_server.py --enable-experimental
     "document-understanding": {
       "command": "/path/to/your/.venv/bin/python",
       "args": [
-        "/path/to/your/document-understanding-mcp-server/standalone_server.py"
-        # Add flags as needed, e.g.:
-        # , "--allow-no-java"
-        # , "--allow-no-tesseract"
-        # , "--enable-experimental"
-        # , "--allow-any-path"
+        "-m", "document_understanding.cli"
       ],
       "env": {
-        "PYTHONPATH": "/path/to/your/document-understanding-mcp-server/src",
-        "PYTHONUNBUFFERED": "1",
-        "DOCUMENT_UNDERSTANDING_BASE_PATH": "/absolute/path/to/pdf/storage" # MUST BE SET HERE (or globally) unless --allow-any-path is used
-      },
-      "toolCallTimeoutMillis": 300000
+        "DOCUMENT_UNDERSTANDING_BASE_PATH": "/path/to/pdf/storage"
+      }
     }
   }
 }
-```
-
-### Example 2: Full Configuration with Cursor MCP
-
-```json
-{
-  "mcpServers": {
-    "document_understanding": {
-      "name": "Document Understanding (PDF) Server",
-      "description": "Extracts text, metadata, layout, tables, etc. from PDF files.",
-      "command": "/Users/j/Projects/document-understanding-mcp-server/.venv/bin/python",
-      "args": [
-          "/Users/j/Projects/document-understanding-mcp-server/standalone_server.py",
-          "--allow-any-path"
-      ],
-      "environment": {
-          "PYTHONPATH": "/Users/j/Projects/document-understanding-mcp-server/src",
-          "PYTHONUNBUFFERED": "1",
-          "JAVA_HOME": "/opt/homebrew/opt/openjdk/",
-          "TESSERACT_HOME": "/opt/homebrew/opt/tesseract/",
-          "CURSOR_MCP_CONFIG_VERSION": "2025-04-06-04"
-      },
-      "enable_globally": true,
-      "toolCallTimeoutMillis": 300000
-    }
-  }
-}
-```
-
-**Alternative Invocation (using `uv run` - less flexible for flags/env):**
-
-```bash
-# This doesn't easily allow passing the --allow-no-java flag
-uv run document-understanding-mcp-server
 ```
 
 ## LLM Usage Advice

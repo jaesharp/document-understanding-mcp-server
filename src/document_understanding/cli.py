@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import traceback
 from enum import Enum, auto
 from typing import Any, Dict, Optional, Tuple
@@ -43,7 +44,9 @@ def cli_main():
             if xdg_runtime:
                 safe_dir = os.path.join(xdg_runtime, f"document_understanding_{user}")
             else:
-                safe_dir = os.path.join("/tmp", f"document_understanding_{user}")
+                # Use tempfile.gettempdir() instead of hardcoded /tmp
+                temp_base = tempfile.gettempdir()
+                safe_dir = os.path.join(temp_base, f"document_understanding_{user}")
 
             os.environ["SAFE_OUTPUT_DIRECTORIES"] = safe_dir
             print(f"Sandbox mode: Setting safe output directory to {safe_dir}")
@@ -55,7 +58,13 @@ def cli_main():
     else:
         # If sandbox mode is disabled and no directories specified, use defaults
         if not os.environ.get("SAFE_OUTPUT_DIRECTORIES"):
-            default_dirs = "/tmp/extracted_images:/var/tmp/extracted_images"
+            # Use tempfile.gettempdir() instead of hardcoded /tmp
+            temp_base = tempfile.gettempdir()
+            var_temp = os.path.join(os.path.dirname(temp_base), "var", "tmp")
+            if not os.path.exists(var_temp):
+                var_temp = temp_base  # Fallback if /var/tmp doesn't exist
+
+            default_dirs = f"{os.path.join(temp_base, 'extracted_images')}:{os.path.join(var_temp, 'extracted_images')}"
             os.environ["SAFE_OUTPUT_DIRECTORIES"] = default_dirs
             print(
                 f"Sandbox mode disabled: Using default output directories: {default_dirs}"
@@ -64,7 +73,8 @@ def cli_main():
             # Create the directories
             for dir_path in default_dirs.split(":"):
                 os.makedirs(dir_path, exist_ok=True)
-                os.chmod(dir_path, 0o755)  # More permissive in non-sandbox mode
+                # Use 0o700 permissions for better security, even in non-sandbox mode
+                os.chmod(dir_path, 0o700)
 
     # Process command-line arguments
     args = sys.argv[1:]
